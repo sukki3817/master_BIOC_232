@@ -1,0 +1,57 @@
+#session5
+
+## make shortcut for a frequently used command
+alias sq="squeue -u sulky217" 
+#the last argument of the previous command
+!$ 
+#both lines are the same ' ? `? baptic
+for i in $(cat file. txt)
+for i in `cat file.txt'
+
+srun --nodes=1 --tasks-per-node=1 --cpus-per-task=9 --mem=12G --time=00:20:00 fastqc -t 9 -o . ../*.fastq.gz
+
+ls ../1_raw_data/*.fastq.gz | cut -d '/' -f 3 | cut -d '.' -f 1 > sample_IDs.txt
+
+for sample in `cat sample_IDs.txt`
+do
+echo $sample
+sbatch \
+--job-name=fastp\
+--nodes=1\
+--tasks-per-node=1\
+--cpus-per-task=8\
+--mem=10G\
+--time=01:00:00\
+--output=$sample.out\
+--error=$sample.err \
+--wrap="fastp -w 8 -i ../1_raw_data/$sample.fastq.gz -o $sample.clip.fastq.gz -j $sample.fastp.json -h $sample.html -r;"
+sleep 1s
+done
+
+
+srun --nodes=1 --tasks-per-node=1 --cpus-per-task=9 --mem=12G --time=00:20:00 fastqc -t 9 -o . *.clip.fastq.gz
+
+for sample in $(cat ../2_clipping/sample_IDs.txt)
+do
+sbatch --job-name=bwa --nodes=1 --tasks-per-node=1 --cpus-per-task=10 --mem=10G --time=01:00:00 --output=$sample.out --error=$sample.err --wrap="bwa mem -t 8 rpomeroyi.fasta ../2_clipping/$sample.clip.fastq.gz |samtools view -b -h |samtools sort -@ 2 --write-index -o $sample.sort.bam"
+done
+
+samtools tview --reference sea-A.sort.bam
+samtools tview --reference rpomeroyi.fasta sea-A.sort.bam
+
+samtools flagstat sea-A.sort.bam
+sea- 71.67  65.7  62.05
+mbm- 93.5  94.9  95.21
+mbm-gluc 67.98  91.05  83.72
+
+
+for sample in $(cat ../2_clipping/sample_IDs.txt)
+do
+echo "$sample " > $sample.stats; samtools flagstat -@ 16 $sample.sort.bam | sed -n '1p;7p' >> $sample.stats
+done
+
+
+cat *.stats | paste -d ' ' - - - | awk '{print $1 " " $2 " " $12 " " $16}' |tr -d '(' | column -t
+
+
+srun --nodes=1 --tasks-per-node=1 --cpus-per-task=8 --mem=16G --time=00:20:00 featureCounts -a rpomeroyi_genome.gtf -t gene -g gene_id -T 8 -o feature_counts.txt ../3_mapping/*.sort.bam
